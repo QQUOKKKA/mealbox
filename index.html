@@ -158,7 +158,24 @@
     <h2>급식 게시자료 프롬프트 생성기</h2>
     <p id="gateMsg">로그인 상태를 확인하고 있어요…</p>
     <button id="gateLoginBtn" class="action-btn primary" type="button" style="display:none">Google 계정으로 로그인</button>
-    <a id="gatePortalLink" class="gate-link" href="https://mealbox-five.vercel.app" target="_blank" rel="noopener" style="display:none">google 계정으로 로그인하기</a>
+    <div id="signupBox" style="display:none;text-align:left;margin-top:12px">
+      <div class="field" style="margin-bottom:10px">
+        <label>이름</label>
+        <input id="regName" placeholder="예: 김소리" autocomplete="name" />
+      </div>
+      <div class="field" style="margin-bottom:8px">
+        <label>학교명</label>
+        <div style="display:flex;gap:6px">
+          <input id="regSchool" placeholder="예: 우만초등학교" />
+          <button id="regSchoolSearchBtn" class="action-btn secondary" type="button" style="white-space:nowrap;padding:10px 12px">학교 찾기</button>
+        </div>
+      </div>
+      <div id="regSchoolStatus" class="status" style="margin-top:4px;margin-bottom:6px"></div>
+      <div id="regSchoolResults" class="school-results" style="max-height:150px;overflow:auto;margin-top:4px;margin-bottom:10px"></div>
+      <button id="regSubmitBtn" class="action-btn primary" type="button">가입 완료하고 시작하기</button>
+      <button id="regLogoutBtn" class="action-btn secondary" type="button" style="margin-top:8px">다른 계정으로 로그인</button>
+    </div>
+    <a id="gatePortalLink" class="gate-link" href="https://geupsik-soriham.vercel.app" target="_blank" rel="noopener" style="display:none">급식소리함 포털 보기 ↗</a>
     <button id="gateLogoutBtn" class="action-btn secondary" type="button" style="display:none;margin-top:10px">다른 계정으로 로그인</button>
     <div id="gateErr" class="gate-err"></div>
   </div>
@@ -1594,23 +1611,110 @@ let currentUser = null;
 let profile = null;
 const $ = id => document.getElementById(id);
 
-// ───────── 로그인 게이트 ─────────
+// ───────── 로그인 게이트 + 직접 회원가입/등록 ─────────
+let pickedRegSchool = null;
+
 function showGate(mode, err){
   $('authGate').classList.remove('hide');
-  const msg=$('gateMsg'), login=$('gateLoginBtn'), portal=$('gatePortalLink'), out=$('gateLogoutBtn');
-  login.style.display='none'; portal.style.display='none'; out.style.display='none';
+  const msg=$('gateMsg'), login=$('gateLoginBtn'), signup=$('signupBox'), portal=$('gatePortalLink'), out=$('gateLogoutBtn');
+  login.style.display='none'; signup.style.display='none'; portal.style.display='none'; out.style.display='none';
   $('gateErr').textContent=err||'';
   if(mode==='login'){
-    msg.textContent='포털과 같은 구글 계정으로 로그인해 주세요.';
+    msg.textContent='구글 계정으로 로그인해 주세요.';
     login.style.display='block';
   }else if(mode==='noprofile'){
-    msg.textContent='이 구글 계정은 아직 등록되지 않았어요. 포털에서 학교와 이름을 등록한 뒤 다시 와 주세요.';
-    portal.style.display='inline-block'; out.style.display='block';
+    msg.textContent='처음 오셨네요! 이름과 학교명을 입력해 바로 가입·등록을 완료해 주세요.';
+    signup.style.display='block';
+    if(currentUser && currentUser.displayName && !$('regName').value.trim()){
+      $('regName').value = currentUser.displayName;
+    }
   }else{
     msg.textContent='로그인 상태를 확인하고 있어요…';
   }
 }
 function hideGate(){ $('authGate').classList.add('hide'); }
+
+async function searchRegSchools(){
+  const q = ($('regSchool').value || '').trim();
+  const st = $('regSchoolStatus');
+  const box = $('regSchoolResults');
+  pickedRegSchool = null;
+  if(!q){
+    st.textContent = '학교명을 입력한 뒤 학교 찾기를 눌러 주세요.';
+    return;
+  }
+  st.textContent = '학교를 검색하고 있어요…';
+  box.innerHTML = '';
+  try{
+    const res = await fetch('/api/schools?query=' + encodeURIComponent(q));
+    const data = await res.json();
+    if(!res.ok) throw new Error(data.error || '학교 검색 실패');
+    const list = (data.schools || []).filter(s => !String(s.name || '').includes('유치원'));
+    if(!list.length){
+      st.textContent = '검색 결과가 없어요. 입력한 학교명으로 바로 가입할 수도 있어요.';
+      return;
+    }
+    st.textContent = list.length + '개 학교를 찾았어요. 해당 학교를 선택해 주세요.';
+    box.innerHTML = list.map((s, i) =>
+      '<div class="school-item" data-ri="' + i + '"><b>' +
+      String(s.name || '').replace(/[&<>"']/g, m => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[m])) +
+      '</b><span>' + String(s.region || '') + ' · ' + String(s.address || '') + '</span></div>'
+    ).join('');
+    box.querySelectorAll('.school-item').forEach(el => {
+      el.addEventListener('click', () => {
+        const chosen = list[Number(el.dataset.ri)];
+        pickedRegSchool = chosen;
+        $('regSchool').value = chosen.name || '';
+        box.querySelectorAll('.school-item').forEach(x => x.classList.remove('active'));
+        el.classList.add('active');
+        st.textContent = '선택됨: ' + (chosen.name || '');
+      });
+    });
+  }catch(e){
+    st.textContent = '학교 검색이 되지 않아도 입력한 학교명으로 바로 가입할 수 있어요.';
+  }
+}
+
+async function saveMemberProfile(){
+  if(!currentUser) return;
+  const name = ($('regName').value || '').trim();
+  const school = ($('regSchool').value || '').trim();
+  if(!name || !school){
+    $('gateErr').textContent = '이름과 학교명을 모두 입력해 주세요.';
+    return;
+  }
+  $('regSubmitBtn').disabled = true;
+  $('regSubmitBtn').textContent = '저장 중…';
+  $('gateErr').textContent = '';
+  try{
+    const matchedSchool = pickedRegSchool && pickedRegSchool.name === school ? pickedRegSchool : null;
+    const newProfile = {
+      uid: currentUser.uid,
+      email: currentUser.email || '',
+      name,
+      school,
+      schoolCode: matchedSchool ? (matchedSchool.schoolCode || '') : '',
+      officeCode: matchedSchool ? (matchedSchool.atptCode || '') : '',
+      updatedAt: new Date().toISOString()
+    };
+    await setDoc(doc(db, 'users', currentUser.uid), newProfile, { merge: true });
+    profile = { ...(profile || {}), ...newProfile };
+    hideGate();
+    renderUserBar();
+    window.dispatchEvent(new CustomEvent('sori-ready', { detail: { profile, user: currentUser } }));
+    trackVisit(currentUser.uid);
+  }catch(e){
+    $('gateErr').textContent = '회원 등록 저장에 실패했어요: ' + (e.code || e.message || '권한을 확인해 주세요.');
+  }finally{
+    $('regSubmitBtn').disabled = false;
+    $('regSubmitBtn').textContent = '가입 완료하고 시작하기';
+  }
+}
+
+$('regSchoolSearchBtn').addEventListener('click', searchRegSchools);
+$('regSchool').addEventListener('keydown', e => { if(e.key === 'Enter'){ e.preventDefault(); searchRegSchools(); } });
+$('regSubmitBtn').addEventListener('click', saveMemberProfile);
+$('regLogoutBtn').addEventListener('click', () => signOut(auth));
 
 async function doSignIn(){
   try{

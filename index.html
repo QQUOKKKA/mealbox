@@ -1589,7 +1589,7 @@ document.getElementById('savedDetails').addEventListener('toggle', ev=>{ if(ev.t
 
 <script type="module">
 import { initializeApp } from 'https://www.gstatic.com/firebasejs/10.12.0/firebase-app.js';
-import { getAuth, signInWithPopup, signInWithRedirect, getRedirectResult, GoogleAuthProvider, onAuthStateChanged, signOut } from 'https://www.gstatic.com/firebasejs/10.12.0/firebase-auth.js';
+import { getAuth, signInWithPopup, signInWithRedirect, getRedirectResult, GoogleAuthProvider, onAuthStateChanged, signOut, setPersistence, browserLocalPersistence } from 'https://www.gstatic.com/firebasejs/10.12.0/firebase-auth.js';
 import { getFirestore, doc, setDoc, getDoc, getDocs, deleteDoc, collection, increment } from 'https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js';
 
 // 밀박스와 포털과 동일한 Firebase 프로젝트 (같은 계정·같은 가입 정보 공유)
@@ -1603,6 +1603,7 @@ const firebaseConfig = {
 };
 const fbApp = initializeApp(firebaseConfig);
 const auth  = getAuth(fbApp);
+setPersistence(auth, browserLocalPersistence).catch(()=>{});
 const db    = getFirestore(fbApp);
 const gprov = new GoogleAuthProvider();
 const APP_KEY = '프롬프트 생성기';   // 관리자 화면 "도구별 사용 현황"에 표시되는 이름
@@ -1763,20 +1764,32 @@ async function trackVisit(uid){
   }catch(e){}
 }
 
+let authHandling = false;
 onAuthStateChanged(auth, async user=>{
-  currentUser=user; profile=null;
-  if(!user){ renderUserBar(); showGate('login'); return; }
-  showGate('checking');
+  if(authHandling) return;
+  authHandling = true;
   try{
-    const snap=await getDoc(doc(db,'users',user.uid));
-    profile=snap.exists()?snap.data():null;
-  }catch(e){
-    showGate('login','가입 정보를 확인하지 못했어요. 잠시 후 다시 시도해 주세요.'); return;
+    currentUser=user; profile=null;
+    if(!user){ renderUserBar(); showGate('login'); return; }
+    showGate('checking');
+    try{
+      const docPromise = getDoc(doc(db,'users',user.uid));
+      const timeoutPromise = new Promise((_, rej)=>setTimeout(()=>rej(new Error('timeout')), 7000));
+      const snap = await Promise.race([docPromise, timeoutPromise]);
+      profile = snap && snap.exists() ? snap.data() : null;
+    }catch(e){
+      // Firestore 읽기 오류나 타임아웃 시에도 가입/프로필 입력 폼을 띄워 멈추지 않게 처리
+      renderUserBar();
+      showGate('noprofile', '회원 정보를 불러오는 중 문제가 있었어요('+(e.code||e.message||'오류')+'). 아래에서 이름과 학교를 입력해 등록하거나 저장해 주세요.');
+      return;
+    }
+    if(!profile||!profile.name){ renderUserBar(); showGate('noprofile'); return; }
+    hideGate(); renderUserBar();
+    window.dispatchEvent(new CustomEvent('sori-ready',{detail:{profile,user}}));
+    trackVisit(user.uid);
+  }finally{
+    authHandling = false;
   }
-  if(!profile||!profile.name){ renderUserBar(); showGate('noprofile'); return; }
-  hideGate(); renderUserBar();
-  window.dispatchEvent(new CustomEvent('sori-ready',{detail:{profile,user}}));
-  trackVisit(user.uid);
 });
 
 // ───────── 내 저장 식단 (users/{uid}/mealSaves/{학교코드_식사코드_YYYYMM}) ─────────

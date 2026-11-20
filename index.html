@@ -1520,7 +1520,7 @@ window.addEventListener('sori-ready', function (e) {
     if (typeof selectSchool === 'function' && !state.selectedSchool) {
       selectSchool({ atptCode: p.officeCode, schoolCode: p.schoolCode, name: p.school });
       var st = document.getElementById('apiStatus');
-      if (st) st.textContent = '급식소리함에 등록된 내 학교(' + p.school + ')로 자동 설정했어요.';
+      if (st) st.textContent = '지금 재직중인 학교(' + p.school + ')로 자동 설정했어요.';
     }
   } catch (err) {}
 });
@@ -1601,10 +1601,10 @@ function showGate(mode, err){
   login.style.display='none'; portal.style.display='none'; out.style.display='none';
   $('gateErr').textContent=err||'';
   if(mode==='login'){
-    msg.textContent='급식소리함 회원 전용 도구예요. 포털과 같은 구글 계정으로 로그인해 주세요.';
+    msg.textContent='포털과 같은 구글 계정으로 로그인해 주세요.';
     login.style.display='block';
   }else if(mode==='noprofile'){
-    msg.textContent='이 구글 계정은 아직 급식소리함에 가입되어 있지 않아요. 포털에서 학교와 이름을 등록한 뒤 다시 와 주세요.';
+    msg.textContent='이 구글 계정은 아직 등록되지 않았어요. 포털에서 학교와 이름을 등록한 뒤 다시 와 주세요.';
     portal.style.display='inline-block'; out.style.display='block';
   }else{
     msg.textContent='로그인 상태를 확인하고 있어요…';
